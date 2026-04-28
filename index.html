@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Audio Interference Lab</title>
+
+<style>
+:root {
+    --bg: #03070c;
+    --panel: rgba(11, 20, 18, 0.92);
+    --line: rgba(84, 255, 184, 0.18);
+    --glow: #65ffba;
+    --text: #c8ffe6;
+    --muted: #78b49a;
+    --accent2: #98ffd2;
+    --blue: #7fb6ff;
+    --yellow: #ffe66d;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html, body {
+    margin: 0;
+    min-height: 100%;
+    font-family: "Consolas", "Courier New", monospace;
+    background:
+        radial-gradient(circle at center, rgba(20, 70, 45, 0.08), transparent 30%),
+        linear-gradient(180deg, #02050a 0%, #03070c 100%);
+    color: var(--text);
+}
+
+body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background-image:
+        linear-gradient(rgba(80,255,170,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(80,255,170,0.03) 1px, transparent 1px);
+    background-size: 42px 42px;
+    pointer-events: none;
+    opacity: 0.35;
+}
+
+.page {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 30px 18px;
+}
+
+.console {
+    width: min(1150px, 100%);
+    background: linear-gradient(180deg, rgba(21, 33, 29, 0.96), rgba(8, 14, 13, 0.97));
+    border: 1px solid rgba(119,255,190,0.18);
+    border-radius: 22px;
+    box-shadow:
+        0 0 0 1px rgba(255,255,255,0.03) inset,
+        0 0 25px rgba(60,255,160,0.08),
+        0 0 80px rgba(60,255,160,0.06);
+    overflow: hidden;
+}
+
+.topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 22px;
+    border-bottom: 1px solid rgba(101,255,186,0.12);
+    background: linear-gradient(180deg, rgba(23, 36, 31, 0.95), rgba(15, 24, 21, 0.95));
+}
+.back-button {
+    color: var(--accent2);
+    text-decoration: none;
+    border: 1px solid rgba(101,255,186,0.22);
+    background: linear-gradient(180deg, rgba(24,44,37,0.95), rgba(10,21,18,0.96));
+    padding: 10px 14px;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    transition: 0.18s ease;
+    white-space: nowrap;
+}
+
+.back-button:hover {
+    transform: translateY(-1px);
+    border-color: rgba(101,255,186,0.5);
+    box-shadow: 0 0 16px rgba(101,255,186,0.12);
+}
+
+.topbar-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.status-led {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--glow);
+    box-shadow: 0 0 10px var(--glow), 0 0 24px var(--glow);
+}
+
+.unit-title {
+    font-size: clamp(1.4rem, 3vw, 2.2rem);
+    color: var(--accent2);
+    letter-spacing: 0.08em;
+    font-weight: 700;
+    text-shadow: 0 0 12px rgba(101,255,186,0.22);
+}
+
+.unit-subtitle {
+    font-size: 0.8rem;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+}
+
+.topbar-right {
+    text-align: right;
+    font-size: 0.8rem;
+    color: var(--muted);
+    line-height: 1.5;
+}
+
+.content {
+    padding: 22px;
+}
+
+.upload-panel, .mix-panel, .math-panel {
+    border: 1px solid rgba(101,255,186,0.14);
+    background: linear-gradient(180deg, rgba(10,17,15,0.95), rgba(13,22,19,0.95));
+    border-radius: 16px;
+    padding: 18px;
+    margin-bottom: 18px;
+}
+
+.upload-label, .section-title {
+    color: var(--muted);
+    font-size: 0.82rem;
+    margin-bottom: 10px;
+    letter-spacing: 0.08em;
+}
+
+input[type="file"] {
+    color: var(--text);
+    background: rgba(7, 12, 11, 0.95);
+    border: 1px solid rgba(101,255,186,0.18);
+    border-radius: 10px;
+    padding: 10px;
+    width: 100%;
+    max-width: 460px;
+}
+
+.controls {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin: 18px 0;
+}
+
+button {
+    appearance: none;
+    border: 1px solid rgba(101,255,186,0.22);
+    background: linear-gradient(180deg, rgba(24,44,37,0.95), rgba(10,21,18,0.96));
+    color: var(--accent2);
+    padding: 12px 18px;
+    border-radius: 12px;
+    font-family: inherit;
+    font-weight: 700;
+    cursor: pointer;
+    transition: 0.18s ease;
+}
+
+button:hover {
+    transform: translateY(-1px);
+    border-color: rgba(101,255,186,0.5);
+    box-shadow: 0 0 16px rgba(101,255,186,0.12);
+}
+
+.wave-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 18px;
+}
+
+.wave-card {
+    border: 1px solid rgba(101,255,186,0.14);
+    border-radius: 16px;
+    padding: 14px;
+    background: rgba(8, 14, 12, 0.9);
+}
+
+.wave-title {
+    font-size: 0.9rem;
+    color: var(--accent2);
+    margin-bottom: 10px;
+}
+
+.wave-wrap {
+    border-radius: 14px;
+    overflow: hidden;
+    border: 1px solid rgba(101,255,186,0.18);
+    background:
+        linear-gradient(rgba(101,255,186,0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(101,255,186,0.05) 1px, transparent 1px),
+        linear-gradient(180deg, #040806 0%, #06100d 100%);
+    background-size: 32px 32px, 32px 32px, auto;
+}
+
+canvas {
+    width: 100%;
+    height: 210px;
+    display: block;
+}
+
+.mix-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+
+.mix-label {
+    color: var(--muted);
+    font-size: 0.85rem;
+}
+
+.mix-value {
+    color: var(--accent2);
+    font-weight: 700;
+}
+
+input[type="range"] {
+    width: 100%;
+    accent-color: #6dffbe;
+}
+
+.footer-readout {
+    margin-top: 18px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px;
+}
+
+.readout {
+    border: 1px solid rgba(101,255,186,0.12);
+    background: rgba(8, 14, 12, 0.9);
+    border-radius: 12px;
+    padding: 12px;
+}
+
+.readout .k {
+    display: block;
+    color: var(--muted);
+    font-size: 0.75rem;
+    margin-bottom: 8px;
+}
+
+.readout .v {
+    color: var(--accent2);
+    font-size: 1rem;
+    font-weight: 700;
+    word-break: break-word;
+}
+
+.math-formula {
+    color: var(--accent2);
+    font-size: 1rem;
+    margin-bottom: 8px;
+}
+
+.math-desc {
+    color: var(--muted);
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+.legend {
+    display: flex;
+    gap: 18px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+    font-size: 0.8rem;
+    color: var(--muted);
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.legend-color {
+    width: 14px;
+    height: 3px;
+    border-radius: 4px;
+}
+
+@media (max-width: 700px) {
+    .content {
+        padding: 16px;
+    }
+
+    canvas {
+        height: 160px;
+    }
+
+    .topbar {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+    }
+
+    .topbar-right {
+        text-align: left;
+    }
+}
+</style>
+</head>
+
+<body>
+<div class="page">
+    <div class="console">
+        <div class="topbar">
+    <a href="../../index.html" class="back-button">← Späť na portál</a>
+
+    <div class="topbar-left">
+                
+                <div class="status-led"></div>
+                <div>
+                    <div class="unit-title">AUDIO INTERFERENCE LAB</div>
+                    <div class="unit-subtitle">TIME + PHASE-CANCELLATION VISUALIZER</div>
+                </div>
+            </div>
+            <div class="topbar-right">
+                <div>MODE: VISUAL ANALYSIS</div>
+                <div id="statusText">STATUS: STANDBY</div>
+            </div>
+        </div>
+
+        <div class="content">
+            <div class="upload-panel">
+                <div class="upload-label">INPUT CHANNEL // LOAD AUDIO OR MP4 SAMPLE</div>
+                <input type="file" id="fileInput" accept=".wav,.mp3,.m4a,.aac,.ogg,.mp4,audio/*,video/mp4">
+            </div>
+
+            <div class="controls">
+                <button id="playOriginal">PLAY ORIGINAL</button>
+                <button id="playMixed">PLAY MIXED</button>
+                <button id="stopBtn">STOP</button>
+            </div>
+
+            <div class="mix-panel">
+                <div class="mix-header">
+                    <div class="mix-label">COUNTER-PHASE INTENSITY</div>
+                    <div class="mix-value" id="mixValue">100%</div>
+                </div>
+                <input type="range" id="mixSlider" min="0" max="1" step="0.01" value="1">
+            </div>
+
+            <div class="math-panel">
+                <div class="section-title">SIGNAL COMPUTATION MODEL</div>
+                <div class="math-formula">mixed(t) = original(t) + intensity × counter_phase(t)</div>
+                <div class="math-desc">
+                    Po nahratí sa zobrazí pôvodný signál v časovej oblasti. V druhom paneli sa z nahraného
+                    audia pomocou frekvenčnej analýzy vyberú dominantné frekvenčné zložky a z nich sa
+                    vytvorí phase-cancellation model. Modrý priebeh predstavuje 180° posunutú counter-phase
+                    verziu. Žltý priebeh ukazuje výsledok po zmiešaní podľa nastavenej intenzity.
+                </div>
+            </div>
+
+            <div class="wave-grid">
+                <div class="wave-card">
+                    <div class="wave-title">ORIGINAL SIGNAL // TIME DOMAIN</div>
+                    <div class="wave-wrap">
+                        <canvas id="canvasOriginal" width="1000" height="210"></canvas>
+                    </div>
+                </div>
+
+                <div class="wave-card">
+                    <div class="wave-title">PHASE CANCELLATION DEMO // FFT MODEL FROM UPLOADED SIGNAL</div>
+                    <div class="wave-wrap">
+                        <canvas id="canvasPhaseDemo" width="1000" height="210"></canvas>
+                    </div>
+                    <div class="legend">
+                        <div class="legend-item">
+                            <span class="legend-color" style="background:#65ffba;"></span>
+                            <span>Original phase model</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-color" style="background:#7fb6ff;"></span>
+                            <span>Counter-phase model</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-color" style="background:#ffe66d;"></span>
+                            <span>Result after mixing</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="wave-card">
+                    <div class="wave-title">MIXED OUTPUT // INTERFERENCE RESULT</div>
+                    <div class="wave-wrap">
+                        <canvas id="canvasMixed" width="1000" height="210"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div class="footer-readout">
+                <div class="readout">
+                    <span class="k">SOURCE</span>
+                    <span class="v" id="fileName">NO FILE</span>
+                </div>
+                <div class="readout">
+                    <span class="k">CHANNELS</span>
+                    <span class="v" id="channels">-</span>
+                </div>
+                <div class="readout">
+                    <span class="k">SAMPLE RATE</span>
+                    <span class="v" id="sampleRate">-</span>
+                </div>
+                <div class="readout">
+                    <span class="k">DURATION</span>
+                    <span class="v" id="duration">-</span>
+                </div>
+                <div class="readout">
+                    <span class="k">DOMINANT FREQS</span>
+                    <span class="v" id="dominantFreq">-</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let audioBuffer = null;
+let invertedBuffer = null;
+let mixedBuffer = null;
+let ctx = new (window.AudioContext || window.webkitAudioContext)();
+let activeSources = [];
+let dominantComponents = [];
+
+const mixSlider = document.getElementById("mixSlider");
+const mixValue = document.getElementById("mixValue");
+const statusText = document.getElementById("statusText");
+
+const originalCanvas = document.getElementById("canvasOriginal");
+const phaseDemoCanvas = document.getElementById("canvasPhaseDemo");
+const mixedCanvas = document.getElementById("canvasMixed");
+
+function formatTime(seconds) {
+    const mins = Math.floor(seconds / 60);
+    const secs = (seconds % 60).toFixed(1).padStart(4, "0");
+    return `${mins}:${secs}`;
+}
+
+function stopAllSources() {
+    activeSources.forEach(src => {
+        try { src.stop(); } catch (e) {}
+    });
+    activeSources = [];
+    statusText.textContent = "STATUS: STANDBY";
+}
+
+function clearCanvas(canvas) {
+    const c = canvas.getContext("2d");
+    c.clearRect(0, 0, canvas.width, canvas.height);
+}
+
+function drawCenterLine(canvas, color = "rgba(101,255,186,0.14)") {
+    const c = canvas.getContext("2d");
+    const width = canvas.width;
+    const height = canvas.height;
+
+    c.strokeStyle = color;
+    c.lineWidth = 1;
+    c.beginPath();
+    c.moveTo(0, height / 2);
+    c.lineTo(width, height / 2);
+    c.stroke();
+}
+
+function drawWave(canvas, buffer, color = "#65ffba") {
+    if (!buffer) return;
+
+    const c = canvas.getContext("2d");
+    const data = buffer.getChannelData(0);
+    const width = canvas.width;
+    const height = canvas.height;
+    const step = Math.ceil(data.length / width);
+    const amp = height / 2;
+
+    c.clearRect(0, 0, width, height);
+    drawCenterLine(canvas);
+
+    c.shadowBlur = 14;
+    c.shadowColor = color;
+    c.strokeStyle = color;
+    c.lineWidth = 2;
+    c.beginPath();
+
+    for (let i = 0; i < width; i++) {
+        const start = i * step;
+        const end = Math.min(start + step, data.length);
+
+        let min = 1;
+        let max = -1;
+
+        for (let j = start; j < end; j++) {
+            const val = data[j];
+            if (val < min) min = val;
+            if (val > max) max = val;
+        }
+
+        const y1 = (1 + min) * amp;
+        const y2 = (1 + max) * amp;
+        c.moveTo(i, y1);
+        c.lineTo(i, y2);
+    }
+
+    c.stroke();
+    c.shadowBlur = 0;
+}
+
+function applyHannWindow(signal) {
+    const out = new Float32Array(signal.length);
+    const N = signal.length;
+
+    for (let i = 0; i < N; i++) {
+        const w = 0.5 * (1 - Math.cos((2 * Math.PI * i) / (N - 1)));
+        out[i] = signal[i] * w;
+    }
+
+    return out;
+}
+
+function getAnalysisWindow(buffer, size = 2048) {
+    const data = buffer.getChannelData(0);
+    const out = new Float32Array(size);
+
+    if (data.length <= size) {
+        for (let i = 0; i < data.length; i++) out[i] = data[i];
+        return applyHannWindow(out);
+    }
+
+    const start = Math.max(0, Math.floor((data.length - size) / 2));
+    for (let i = 0; i < size; i++) {
+        out[i] = data[start + i];
+    }
+
+    return applyHannWindow(out);
+}
+
+function computeSpectrumWithPhase(signal) {
+    const N = signal.length;
+    const half = Math.floor(N / 2);
+    const bins = [];
+
+    for (let k = 1; k < half; k++) {
+        let real = 0;
+        let imag = 0;
+
+        for (let n = 0; n < N; n++) {
+            const angle = (2 * Math.PI * k * n) / N;
+            real += signal[n] * Math.cos(angle);
+            imag -= signal[n] * Math.sin(angle);
+        }
+
+        const magnitude = Math.sqrt(real * real + imag * imag);
+        const phase = Math.atan2(imag, real);
+
+        bins.push({
+            bin: k,
+            real,
+            imag,
+            magnitude,
+            phase
+        });
+    }
+
+    return bins;
+}
+
+function pickDominantComponents(buffer, count = 5) {
+    if (!buffer) return [];
+
+    const fftSize = 2048;
+    const signal = getAnalysisWindow(buffer, fftSize);
+    const spectrum = computeSpectrumWithPhase(signal);
+    const sampleRate = buffer.sampleRate;
+
+    const filtered = spectrum.filter(item => {
+        const frequency = (item.bin * sampleRate) / fftSize;
+        return frequency >= 60 && frequency <= 4000;
+    });
+
+    filtered.sort((a, b) => b.magnitude - a.magnitude);
+
+    const chosen = [];
+    const minSeparationHz = 90;
+
+    for (const item of filtered) {
+        const frequency = (item.bin * sampleRate) / fftSize;
+
+        const tooClose = chosen.some(existing =>
+            Math.abs(existing.frequency - frequency) < minSeparationHz
+        );
+
+        if (!tooClose) {
+            chosen.push({
+                frequency,
+                magnitude: item.magnitude,
+                phase: item.phase
+            });
+        }
+
+        if (chosen.length >= count) break;
+    }
+
+    if (chosen.length === 0) {
+        return [{
+            frequency: 440,
+            amplitude: 1,
+            phase: 0
+        }];
+    }
+
+    const maxMag = Math.max(...chosen.map(c => c.magnitude), 1);
+
+    return chosen.map(c => ({
+        frequency: c.frequency,
+        amplitude: c.magnitude / maxMag,
+        phase: c.phase
+    }));
+}
+
+function buildInvertedBuffer() {
+    if (!audioBuffer) return null;
+
+    const out = ctx.createBuffer(
+        audioBuffer.numberOfChannels,
+        audioBuffer.length,
+        audioBuffer.sampleRate
+    );
+
+    for (let ch = 0; ch < audioBuffer.numberOfChannels; ch++) {
+        const input = audioBuffer.getChannelData(ch);
+        const output = out.getChannelData(ch);
+
+        for (let i = 0; i < input.length; i++) {
+            output[i] = -input[i];
+        }
+    }
+
+    return out;
+}
+
+function buildMixedBuffer(intensity) {
+    if (!audioBuffer || !invertedBuffer) return null;
+
+    const out = ctx.createBuffer(
+        audioBuffer.numberOfChannels,
+        audioBuffer.length,
+        audioBuffer.sampleRate
+    );
+
+    for (let ch = 0; ch < audioBuffer.numberOfChannels; ch++) {
+        const original = audioBuffer.getChannelData(ch);
+        const inverted = invertedBuffer.getChannelData(ch);
+        const mixed = out.getChannelData(ch);
+
+        for (let i = 0; i < original.length; i++) {
+            mixed[i] = original[i] + intensity * inverted[i];
+        }
+    }
+
+    return out;
+}
+
+function drawPhaseCancellationDemo(canvas, components, intensity) {
+    const c = canvas.getContext("2d");
+    const width = canvas.width;
+    const height = canvas.height;
+    const mid = height / 2;
+    const baseAmp = height * 0.22;
+
+    c.clearRect(0, 0, width, height);
+    drawCenterLine(canvas, "rgba(101,255,186,0.12)");
+
+    if (!components || components.length === 0) return;
+
+    const maxFreq = Math.max(...components.map(item => item.frequency), 1);
+
+    function compositeOriginal(t) {
+        let sum = 0;
+        for (const comp of components) {
+            const normAmp = comp.amplitude;
+            const relativeCycles = 1.5 + (comp.frequency / maxFreq) * 7.5;
+            sum += Math.sin((t * Math.PI * 2 * relativeCycles) + comp.phase) * normAmp;
+        }
+        return sum;
+    }
+
+    function compositeCounter(t) {
+        let sum = 0;
+        for (const comp of components) {
+            const normAmp = comp.amplitude;
+            const relativeCycles = 1.5 + (comp.frequency / maxFreq) * 7.5;
+            sum += Math.sin((t * Math.PI * 2 * relativeCycles) + comp.phase + Math.PI) * normAmp * intensity;
+        }
+        return sum;
+    }
+
+    function drawSignal(getValue, color, lineWidth, shadowBlur = 12) {
+        c.beginPath();
+        c.strokeStyle = color;
+        c.lineWidth = lineWidth;
+        c.shadowBlur = shadowBlur;
+        c.shadowColor = color;
+
+        for (let x = 0; x < width; x++) {
+            const t = x / (width - 1);
+            const y = mid + getValue(t) * baseAmp;
+
+            if (x === 0) c.moveTo(x, y);
+            else c.lineTo(x, y);
+        }
+
+        c.stroke();
+        c.shadowBlur = 0;
+    }
+
+    drawSignal(compositeOriginal, "#65ffba", 2.2, 12);
+    drawSignal(compositeCounter, "#7fb6ff", 2.0, 10);
+    drawSignal((t) => compositeOriginal(t) + compositeCounter(t), "#ffe66d", 2.8, 14);
+}
+
+function formatDominantComponents(components) {
+    if (!components || components.length === 0) return "-";
+    return components.map(c => `${c.frequency.toFixed(0)} Hz`).join(", ");
+}
+
+function refreshVisuals() {
+    if (!audioBuffer) return;
+
+    const intensity = Number(mixSlider.value);
+    mixedBuffer = buildMixedBuffer(intensity);
+
+    drawWave(originalCanvas, audioBuffer, "#65ffba");
+    drawPhaseCancellationDemo(phaseDemoCanvas, dominantComponents, intensity);
+    drawWave(mixedCanvas, mixedBuffer, "#ffe66d");
+}
+
+function play(buffer) {
+    stopAllSources();
+
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    src.connect(ctx.destination);
+    src.start();
+
+    activeSources.push(src);
+
+    src.onended = () => {
+        activeSources = activeSources.filter(s => s !== src);
+        if (activeSources.length === 0) {
+            statusText.textContent = "STATUS: STANDBY";
+        }
+    };
+
+    statusText.textContent = "STATUS: ACTIVE";
+}
+
+async function decodeUploadedFile(file) {
+    const arrayBuffer = await file.arrayBuffer();
+    return await ctx.decodeAudioData(arrayBuffer.slice(0));
+}
+
+document.getElementById("fileInput").addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    stopAllSources();
+    statusText.textContent = "STATUS: PROCESSING";
+
+    try {
+        audioBuffer = await decodeUploadedFile(file);
+        invertedBuffer = buildInvertedBuffer();
+        dominantComponents = pickDominantComponents(audioBuffer, 5);
+        mixedBuffer = buildMixedBuffer(Number(mixSlider.value));
+
+        document.getElementById("fileName").textContent = file.name;
+        document.getElementById("channels").textContent = audioBuffer.numberOfChannels;
+        document.getElementById("sampleRate").textContent = `${audioBuffer.sampleRate} Hz`;
+        document.getElementById("duration").textContent = formatTime(audioBuffer.duration);
+        document.getElementById("dominantFreq").textContent = formatDominantComponents(dominantComponents);
+
+        refreshVisuals();
+        statusText.textContent = "STATUS: READY";
+    } catch (err) {
+        console.error(err);
+        audioBuffer = null;
+        invertedBuffer = null;
+        mixedBuffer = null;
+        dominantComponents = [];
+        clearCanvas(originalCanvas);
+        clearCanvas(phaseDemoCanvas);
+        clearCanvas(mixedCanvas);
+        statusText.textContent = "STATUS: LOAD ERROR";
+        alert("Súbor sa nepodarilo dekódovať. Skús WAV, MP3, M4A, OGG alebo MP4 s podporovaným audio codec-om.");
+    }
+});
+
+document.getElementById("playOriginal").onclick = async () => {
+    if (!audioBuffer) return;
+    await ctx.resume();
+    play(audioBuffer);
+};
+
+document.getElementById("playMixed").onclick = async () => {
+    if (!audioBuffer || !invertedBuffer) return;
+    await ctx.resume();
+
+    mixedBuffer = buildMixedBuffer(Number(mixSlider.value));
+    drawWave(mixedCanvas, mixedBuffer, "#ffe66d");
+    play(mixedBuffer);
+};
+
+document.getElementById("stopBtn").onclick = () => {
+    stopAllSources();
+};
+
+mixSlider.addEventListener("input", () => {
+    const intensity = Number(mixSlider.value);
+    mixValue.textContent = `${Math.round(intensity * 100)}%`;
+
+    if (!audioBuffer) return;
+
+    mixedBuffer = buildMixedBuffer(intensity);
+    drawPhaseCancellationDemo(phaseDemoCanvas, dominantComponents, intensity);
+    drawWave(mixedCanvas, mixedBuffer, "#ffe66d");
+});
+</script>
+</body>
+</html>
