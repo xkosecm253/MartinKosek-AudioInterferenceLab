@@ -327,10 +327,9 @@ input[type="range"] {
 <div class="page">
     <div class="console">
         <div class="topbar">
-    <a href="/" class="back-button">← Späť na portál</a>
+            <a href="/" class="back-button">← Späť na portál</a>
 
-    <div class="topbar-left">
-                
+            <div class="topbar-left">
                 <div class="status-led"></div>
                 <div>
                     <div class="unit-title">AUDIO INTERFERENCE LAB</div>
@@ -353,6 +352,8 @@ input[type="range"] {
                 <button id="playOriginal">PLAY ORIGINAL</button>
                 <button id="playMixed">PLAY MIXED</button>
                 <button id="stopBtn">STOP</button>
+                <button id="recordBtn">RECORD VOICE</button>
+                <button id="stopRecordBtn">STOP RECORDING</button>
             </div>
 
             <div class="mix-panel">
@@ -367,10 +368,11 @@ input[type="range"] {
                 <div class="section-title">SIGNAL COMPUTATION MODEL</div>
                 <div class="math-formula">mixed(t) = original(t) + intensity × counter_phase(t)</div>
                 <div class="math-desc">
-                    Po nahratí sa zobrazí pôvodný signál v časovej oblasti. V druhom paneli sa z nahraného
-                    audia pomocou frekvenčnej analýzy vyberú dominantné frekvenčné zložky a z nich sa
-                    vytvorí phase-cancellation model. Modrý priebeh predstavuje 180° posunutú counter-phase
-                    verziu. Žltý priebeh ukazuje výsledok po zmiešaní podľa nastavenej intenzity.
+                    Po nahratí súboru alebo nahratí vlastného hlasu cez mikrofón sa zobrazí pôvodný signál
+                    v časovej oblasti. V druhom paneli sa z audia pomocou frekvenčnej analýzy vyberú
+                    dominantné frekvenčné zložky a z nich sa vytvorí phase-cancellation model.
+                    Modrý priebeh predstavuje 180° posunutú counter-phase verziu. Žltý priebeh ukazuje
+                    výsledok po zmiešaní podľa nastavenej intenzity.
                 </div>
             </div>
 
@@ -383,7 +385,7 @@ input[type="range"] {
                 </div>
 
                 <div class="wave-card">
-                    <div class="wave-title">PHASE CANCELLATION DEMO // FFT MODEL FROM UPLOADED SIGNAL</div>
+                    <div class="wave-title">PHASE CANCELLATION DEMO // FFT MODEL FROM UPLOADED OR RECORDED SIGNAL</div>
                     <div class="wave-wrap">
                         <canvas id="canvasPhaseDemo" width="1000" height="210"></canvas>
                     </div>
@@ -444,6 +446,10 @@ let mixedBuffer = null;
 let ctx = new (window.AudioContext || window.webkitAudioContext)();
 let activeSources = [];
 let dominantComponents = [];
+
+// Premenne pre nahravanie hlasu z mikrofonu
+let mediaRecorder = null;
+let recordedChunks = [];
 
 const mixSlider = document.getElementById("mixSlider");
 const mixValue = document.getElementById("mixValue");
@@ -781,6 +787,25 @@ async function decodeUploadedFile(file) {
     return await ctx.decodeAudioData(arrayBuffer.slice(0));
 }
 
+// Spolocna funkcia pre spracovanie nahrateho suboru aj hlasu z mikrofonu
+function processAudioBuffer(buffer, sourceName) {
+    audioBuffer = buffer;
+    invertedBuffer = buildInvertedBuffer();
+    dominantComponents = pickDominantComponents(audioBuffer, 5);
+    mixedBuffer = buildMixedBuffer(Number(mixSlider.value));
+
+    document.getElementById("fileName").textContent = sourceName;
+    document.getElementById("channels").textContent = audioBuffer.numberOfChannels;
+    document.getElementById("sampleRate").textContent = `${audioBuffer.sampleRate} Hz`;
+    document.getElementById("duration").textContent = formatTime(audioBuffer.duration);
+    document.getElementById("dominantFreq").textContent = formatDominantComponents(dominantComponents);
+
+    refreshVisuals();
+    statusText.textContent = "STATUS: READY";
+}
+
+// Nacitanie audio alebo MP4 suboru
+
 document.getElementById("fileInput").addEventListener("change", async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -789,19 +814,8 @@ document.getElementById("fileInput").addEventListener("change", async (e) => {
     statusText.textContent = "STATUS: PROCESSING";
 
     try {
-        audioBuffer = await decodeUploadedFile(file);
-        invertedBuffer = buildInvertedBuffer();
-        dominantComponents = pickDominantComponents(audioBuffer, 5);
-        mixedBuffer = buildMixedBuffer(Number(mixSlider.value));
-
-        document.getElementById("fileName").textContent = file.name;
-        document.getElementById("channels").textContent = audioBuffer.numberOfChannels;
-        document.getElementById("sampleRate").textContent = `${audioBuffer.sampleRate} Hz`;
-        document.getElementById("duration").textContent = formatTime(audioBuffer.duration);
-        document.getElementById("dominantFreq").textContent = formatDominantComponents(dominantComponents);
-
-        refreshVisuals();
-        statusText.textContent = "STATUS: READY";
+        const decoded = await decodeUploadedFile(file);
+        processAudioBuffer(decoded, file.name);
     } catch (err) {
         console.error(err);
         audioBuffer = null;
@@ -816,11 +830,70 @@ document.getElementById("fileInput").addEventListener("change", async (e) => {
     }
 });
 
+// Nahravanie hlasu cez mikrofon
+
+document.getElementById("recordBtn").onclick = async () => {
+    stopAllSources();
+
+    try {
+        await ctx.resume();
+
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+        recordedChunks = [];
+        mediaRecorder = new MediaRecorder(stream);
+
+        mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) {
+                recordedChunks.push(event.data);
+            }
+        };
+
+        mediaRecorder.onstop = async () => {
+            statusText.textContent = "STATUS: PROCESSING RECORDING";
+
+            const blob = new Blob(recordedChunks, { type: "audio/webm" });
+            const arrayBuffer = await blob.arrayBuffer();
+
+            try {
+                const decoded = await ctx.decodeAudioData(arrayBuffer.slice(0));
+                processAudioBuffer(decoded, "RECORDED VOICE");
+            } catch (err) {
+                console.error(err);
+                statusText.textContent = "STATUS: RECORDING ERROR";
+                alert("Nahrávku sa nepodarilo spracovať.");
+            }
+
+            stream.getTracks().forEach(track => track.stop());
+        };
+
+        mediaRecorder.start();
+        statusText.textContent = "STATUS: RECORDING";
+
+    } catch (err) {
+        console.error(err);
+        alert("Prehliadač nepovolil prístup k mikrofónu. Spusti stránku cez localhost alebo HTTPS.");
+        statusText.textContent = "STATUS: MICROPHONE ERROR";
+    }
+};
+
+// Zastavenie nahravania hlasu
+
+document.getElementById("stopRecordBtn").onclick = () => {
+    if (mediaRecorder && mediaRecorder.state === "recording") {
+        mediaRecorder.stop();
+    }
+};
+
+// Prehravanie povodneho signalu
+
 document.getElementById("playOriginal").onclick = async () => {
     if (!audioBuffer) return;
     await ctx.resume();
     play(audioBuffer);
 };
+
+// Prehravanie zmiesaneho signalu
 
 document.getElementById("playMixed").onclick = async () => {
     if (!audioBuffer || !invertedBuffer) return;
@@ -831,9 +904,13 @@ document.getElementById("playMixed").onclick = async () => {
     play(mixedBuffer);
 };
 
+// Stop prehravania
+
 document.getElementById("stopBtn").onclick = () => {
     stopAllSources();
 };
+
+// Reakcia na zmenu intenzity counter-phase signalu
 
 mixSlider.addEventListener("input", () => {
     const intensity = Number(mixSlider.value);
